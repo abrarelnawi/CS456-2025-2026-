@@ -1,0 +1,185 @@
+import random
+from collections import deque
+
+# ==================== TilePuzzle Class ====================
+class TilePuzzle:
+    def init(self, start):
+        # الحالة الابتدائية (3x3)
+        self.start = [start[i:i+3] for i in range(0, 9, 3)]
+        self.goal = [[1, 2, 3],
+                     [4, 5, 6],
+                     [7, 8, 0]]
+
+    # --------- دوال مساعدة ---------
+    def is_goal(self, state):
+        return state == self.goal
+
+    def copy_state(self, state):
+        return [row[:] for row in state]
+
+    def find_zero(self, state):
+        for i in range(3):
+            for j in range(3):
+                if state[i][j] == 0:
+                    return i, j
+
+    def state_to_tuple(self, state):
+        return tuple(num for row in state for num in row)
+
+    def print_state(self, state):
+        for row in state:
+            print(" ".join(str(x) for x in row))
+        print("-" * 10)
+
+    # --------- توليد الحركات الممكنة ---------
+    def expand(self, state):
+        row, col = self.find_zero(state)
+        children = []
+        moves = {
+            "up": (row - 1, col),
+            "down": (row + 1, col),
+            "left": (row, col - 1),
+            "right": (row, col + 1)
+        }
+        for move, (r, c) in moves.items():
+            if 0 <= r < 3 and 0 <= c < 3:
+                new_state = self.copy_state(state)
+                new_state[row][col], new_state[r][c] = new_state[r][c], new_state[row][col]
+                children.append((new_state, move))
+        return children
+
+    # --------- عرض خطوات الحل ---------
+    def show_solution(self, start, moves):
+        state = self.copy_state(start)
+        print("\n🔹 خطوات التحريك:")
+        self.print_state(state)
+        for move in moves:
+            row, col = self.find_zero(state)
+            if move == "up":
+                r, c = row - 1, col
+            elif move == "down":
+                r, c = row + 1, col
+            elif move == "left":
+                r, c = row, col - 1
+            else:
+                r, c = row, col + 1
+            state[row][col], state[r][c] = state[r][c], state[row][col]
+            print(f"Move: {move}")
+            self.print_state(state)
+
+    # --------- طباعة النتائج ---------
+    def print_results(self, name, path, added, expanded):
+        print(f"✅ {name} Solution Found!")
+        print("Moves:", path)
+        print("Solution Cost:", len(path))
+        print("Nodes Added to Frontier:", added)
+        print("Nodes Expanded:", expanded)
+
+    # --------- Breadth-First Search ---------
+    def bfs(self):
+        print("=== Breadth-First Search ===")
+        frontier = deque()
+        frontier.append((self.start, []))
+        explored = set()
+        added, expanded = 1, 0
+
+        while frontier:
+            state, path = frontier.popleft()
+            expanded += 1
+            explored.add(self.state_to_tuple(state))
+
+            if self.is_goal(state):
+                self.print_results("BFS", path, added, expanded)
+                self.show_solution(self.start, path)
+                return
+
+            for child, move in self.expand(state):
+                if self.state_to_tuple(child) not in explored:
+                    frontier.append((child, path + [move]))
+                    added += 1
+        print("No solution found.")
+
+    # --------- Depth-First Search ---------
+    def dfs(self, limit=30):
+        print("=== Depth-First Search ===")
+        stack = [(self.start, [], 0)]
+        visited = set()
+        added, expanded = 1, 0
+
+        while stack:
+            state, path, depth = stack.pop()
+            expanded += 1
+            visited.add(self.state_to_tuple(state))
+
+            if self.is_goal(state):
+                self.print_results("DFS", path, added, expanded)
+                self.show_solution(self.start, path)
+                return
+if depth < limit:
+                for child, move in reversed(self.expand(state)):
+                    if self.state_to_tuple(child) not in visited:
+                        stack.append((child, path + [move], depth + 1))
+                        added += 1
+
+        print("No solution found (depth limit reached).")
+
+    # --------- Depth-Limited Search (Helper for IDS) ---------
+    def dls(self, state, path, depth_limit, added, expanded, visited):
+        if self.is_goal(state):
+            return state, path, added, expanded, True
+        if depth_limit == 0:
+            return None, path, added, expanded, False
+
+        visited.add(self.state_to_tuple(state))
+        expanded += 1
+
+        for child, move in self.expand(state):
+            if self.state_to_tuple(child) not in visited:
+                added += 1
+                result, new_path, added, expanded, found = self.dls(
+                    child, path + [move], depth_limit - 1, added, expanded, visited)
+                if found:
+                    return result, new_path, added, expanded, True
+
+        return None, path, added, expanded, False
+
+    # --------- Iterative Deepening Search ---------
+    def ids(self):
+        print("=== Iterative Deepening Search ===")
+        limit = 0
+        added, expanded = 1, 0
+
+        while True:
+            visited = set()
+            result, path, added, expanded, found = self.dls(
+                self.start, [], limit, added, expanded, visited)
+            if found:
+                self.print_results("IDS", path, added, expanded)
+                self.show_solution(self.start, path)
+                return
+            limit += 1
+            if limit > 30:
+                print("No solution found (depth > 30)")
+                return
+
+
+# ==================== MAIN ====================
+if name == "main":
+    # توليد حالة ابتدائية عشوائية باستخدام random seed
+    random.seed(2)  # غير الرقم باش تتغير النتيجة كل مرة
+    nums = list(range(9))
+    random.shuffle(nums)
+
+    print("🔸 الحالة الابتدائية العشوائية:")
+    print(nums)
+
+    puzzle = TilePuzzle(nums)
+
+    # تجربة BFS
+    puzzle.bfs()
+
+    # تجربة DFS
+    # puzzle.dfs(limit=20)
+
+    # تجربة IDS
+    # puzzle.ids()
