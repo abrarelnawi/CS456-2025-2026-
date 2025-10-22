@@ -1,0 +1,249 @@
+#include <iostream>
+#include <vector>
+#include <queue>
+#include <fstream>
+using namespace std;
+
+// ===============================
+// Node Class (OOP Version)
+// ===============================
+class Node {
+private:
+    vector<int> state;   // الحالة (private)
+    Node* parent;        // الأصل (private)
+    string move;         // الحركة التي أدت لهذه الحالة
+    int g, h, f;         // g = cost, h = heuristic, f = g+h
+
+public:
+    // Constructor
+    Node(vector<int> s, Node* p = nullptr, string m = "", int g_val = 0, int h_val = 0) {
+        state = s;
+        parent = p;
+        move = m;
+        g = g_val;
+        h = h_val;
+        f = g + h;
+    }
+
+    // المقارنة داخل الـ priority_queue
+    bool operator<(const Node& other) const {
+        return f > other.f; // لعكس الترتيب لأن priority_queue هي max-heap
+    }
+
+    // ==========================
+    // Getters
+    // ==========================
+    vector<int> getState() const { return state; }
+    Node* getParent() const { return parent; }
+    string getMove() const { return move; }
+    int getG() const { return g; }
+    int getH() const { return h; }
+    int getF() const { return f; }
+
+    // ==========================
+    // Setters (إن احتجنا تعديل القيم)
+    // ==========================
+    void setParent(Node* p) { parent = p; }
+    void setMove(string m) { move = m; }
+    void setG(int g_val) { g = g_val; f = g + h; }
+    void setH(int h_val) { h = h_val; f = g + h; }
+};
+
+// ===============================
+// الهدف النهائي
+// ===============================
+const int goal_state[9] = {1, 2, 3, 4, 5, 6, 7, 8, 0};
+
+// ===============================
+// دوال مساعدة
+// ===============================
+void get_position(int value, int& row, int& col) {
+    for (int i = 0; i < 9; i++) {
+        if (goal_state[i] == value) {
+            row = i / 3;
+            col = i % 3;
+            return;
+        }
+    }
+}
+
+bool in_closed(vector<vector<int>>& closed, const vector<int>& state) {
+    for (int i = 0; i < (int)closed.size(); i++) {
+        bool same = true;
+        for (int j = 0; j < 9; j++) {
+            if (closed[i][j] != state[j]) {
+                same = false;
+                break;
+            }
+        }
+        if (same) return true;
+    }
+    return false;
+}
+
+vector<pair<string, vector<int>>> successors(const vector<int>& state) {
+    vector<pair<string, vector<int>>> moves;
+    int idx = -1;
+    for (int i = 0; i < 9; i++)
+        if (state[i] == 0) idx = i;
+
+    int row = idx / 3, col = idx % 3;
+
+    string dirs[4] = {"Up", "Down", "Left", "Right"};
+    int drow[4] = {-1, 1, 0, 0};
+    int dcol[4] = {0, 0, -1, 1};
+
+    for (int i = 0; i < 4; i++) {
+        int r = row + drow[i];
+        int c = col + dcol[i];
+        if (r >= 0 && r < 3 && c >= 0 && c < 3) {
+            vector<int> new_state = state;
+            int new_idx = r * 3 + c;
+            int temp = new_state[idx];
+            new_state[idx] = new_state[new_idx];
+            new_state[new_idx] = temp;
+            moves.push_back({dirs[i], new_state});
+        }
+    }
+    return moves;
+}
+
+// ===============================
+// Heuristic 1: عدد البلاطات غير في مكانها
+// ===============================
+int h1(const vector<int>& state) {
+    int cnt = 0;
+    for (int i = 0; i < 9; i++) {
+        if (state[i] != 0 && state[i] != goal_state[i])
+            cnt++;
+    }
+    return cnt;
+}
+
+// ===============================
+// Heuristic 2: الصف والعمود الخاطئ
+// ===============================
+int h2(const vector<int>& state) {
+    int total = 0;
+    for (int i = 0; i < 9; i++) {
+        int val = state[i];
+        if (val == 0) continue;
+        int r = i / 3, c = i % 3;
+        int gr, gc;
+        get_position(val, gr, gc);
+        if (r != gr) total++;
+        if (c != gc) total++;
+    }
+    return total;
+}
+
+// ===============================
+// استرجاع المسار (Path Reconstruction)
+// ===============================
+void reconstruct_path(Node* node) {
+    string path[50];
+    int length = 0;
+    while (node->getParent() != nullptr) {
+        path[length++] = node->getMove();
+        node = node->getParent();
+    }
+    cout << "Path: ";
+    for (int i = length - 1; i >= 0; i--)
+        cout << path[i] << " ";
+    cout << endl;
+    cout << "Moves: " << length << endl;
+}
+
+// ===============================
+// البحث العام (A* أو Greedy)
+// ===============================
+void search(vector<int> start_state, int (*heuristic)(const vector<int>&), bool use_astar) {
+    priority_queue<Node> open_list;
+    vector<vector<int>> closed;
+
+    int h_val = heuristic(start_state);
+    Node* start = new Node(start_state, nullptr, "", 0, h_val);
+    if (!use_astar)
+        start->setH(h_val); // في Greedy نستخدم فقط h
+
+    open_list.push(*start);
+    int expanded = 0;
+    int max_frontier = 1;
+
+    while (!open_list.empty()) {
+        Node current = open_list.top();
+        open_list.pop();
+        expanded++;
+
+        vector<int> cur_state = current.getState();
+        bool is_goal = true;
+        for (int i = 0; i < 9; i++)
+            if (cur_state[i] != goal_state[i]) is_goal = false;
+
+        if (is_goal) {
+            cout << "-----------------------------------\n";
+            cout << "Goal found!\n";
+            reconstruct_path(&current);
+            cout << "Expanded nodes: " << expanded << endl;
+            cout << "Max frontier size: " << max_frontier << endl;
+            return;
+        }
+
+        closed.push_back(cur_state);
+
+        vector<pair<string, vector<int>>> succ = successors(cur_state);
+        for (int i = 0; i < (int)succ.size(); i++) {
+            string move = succ[i].first;
+            vector<int> new_state = succ[i].second;
+
+            if (in_closed(closed, new_state)) continue;
+
+            int g = current.getG() + 1;
+            int h = heuristic(new_state);
+            Node new_node(new_state, new Node(current), move, g, h);
+            if (!use_astar)
+                new_node.setH(h); // f = h فقط في Greedy
+
+            open_list.push(new_node);
+            if ((int)open_list.size() > max_frontier)
+                max_frontier = open_list.size();
+        }
+    }
+    cout << "No solution found.\n";
+}
+
+// ===============================
+// Main
+// ===============================
+int main() {
+    vector<int> start_state(9);
+
+    // قراءة الحالة من ملف input.txt
+    ifstream file("input.txt");
+    if (file.is_open()) {
+        for (int i = 0; i < 9; i++)
+            file >> start_state[i];
+        file.close();
+    } else {
+        cout << "⚠️ لم يتم العثور على الملف input.txt - سيتم استخدام الحالة الافتراضية\n";
+        start_state = {0, 1, 3, 4, 2, 6, 7, 5, 8};
+    }
+
+    cout << "Initial State: ";
+    for (int i = 0; i < 9; i++) cout << start_state[i] << " ";
+    cout << endl;
+
+    cout << "\n==== Greedy Search (h1) ====\n";
+    search(start_state, h1, false);
+
+    cout << "\n==== Greedy Search (h2) ====\n";
+    search(start_state, h2, false);
+
+    cout << "\n==== A* Search (h1) ====\n";
+    search(start_state, h1, true);
+
+    cout << "\n==== A* Search (h2) ====\n";
+    search(start_state, h2, true);
+
+    return 0;
+}
