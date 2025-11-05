@@ -1,0 +1,220 @@
+
+#include <iostream>
+#include <string>
+#include <cmath>
+#include <random>
+#include <algorithm>
+#include <iomanip>
+
+using namespace std;
+
+// تعريف حجم الرقعة
+const int BOARD_SIZE = 8;
+
+// فئة لتمثيل حالة الرقعة وحساب التكلفة الإرشادية
+class QueenBoard {
+private:
+    int board[BOARD_SIZE];
+    int heuristicCost;
+
+    // دالة مساعدة لحساب التكلفة الإرشادية
+    int calculateHeuristic() const {
+        int attackingPairs = 0;
+        for (int i = 0; i < BOARD_SIZE; ++i) {
+            for (int j = i + 1; j < BOARD_SIZE; ++j) {
+                // هجوم في نفس الصف
+                if (board[i] == board[j]) {
+                    attackingPairs++;
+                }
+                // هجوم في القطر
+                if (abs(board[i] - board[j]) == abs(i - j)) {
+                    attackingPairs++;
+                }
+            }
+        }
+        return attackingPairs;
+    }
+
+public:
+    // Constructor
+    QueenBoard(const int initialBoard[BOARD_SIZE]) {
+        for(int i = 0; i < BOARD_SIZE; ++i) {
+            board[i] = initialBoard[i];
+        }
+        heuristicCost = calculateHeuristic();
+    }
+
+    // دالة لنسخ الرقعة
+    void copyBoard(int destination[BOARD_SIZE]) const {
+        for(int i = 0; i < BOARD_SIZE; ++i) {
+            destination[i] = board[i];
+        }
+    }
+
+    // دالة لطباعة الرقعة كسلسلة نصية
+    string toString() const {
+        string s = "";
+        for (int i = 0; i < BOARD_SIZE; ++i) {
+            s += to_string(board[i]);
+        }
+        return s;
+    }
+
+    // Getters
+    int getHeuristicCost() const { return heuristicCost; }
+    const int* getBoard() const { return board; }
+};
+
+// فئة أساسية مجردة لخوارزميات البحث
+class SearchAlgorithm {
+protected:
+    mt19937& gen;
+
+public:
+    SearchAlgorithm(mt19937& generator) : gen(generator) {}
+    virtual ~SearchAlgorithm() = default;
+    virtual void solve(const QueenBoard& initialBoard) = 0;
+};
+
+// فئة خوارزمية تسلق الهضاب
+class HillClimbing : public SearchAlgorithm {
+private:
+    // دالة مساعدة للبحث عن أفضل جار
+    QueenBoard findBestNeighbor(const QueenBoard& currentState) {
+        QueenBoard bestNeighbor = currentState;
+        int currentBoard[BOARD_SIZE];
+        currentState.copyBoard(currentBoard);
+
+        for (int col = 0; col < BOARD_SIZE; ++col) {
+            int originalRow = currentBoard[col];
+            for (int row = 0; row < BOARD_SIZE; ++row) {
+                if (row == originalRow) continue;
+
+                int newBoard[BOARD_SIZE];
+                currentState.copyBoard(newBoard);
+                newBoard[col] = row; // حرك الملكة
+
+                QueenBoard neighbor(newBoard);
+
+                if (neighbor.getHeuristicCost() < bestNeighbor.getHeuristicCost()) {
+                    bestNeighbor = neighbor;
+                }
+            }
+        }
+        return bestNeighbor;
+    }
+
+public:
+    HillClimbing(mt19937& generator) : SearchAlgorithm(generator) {}
+
+    void solve(const QueenBoard& initialBoard) override {
+        QueenBoard currentState = initialBoard;
+        int iteration = 0;
+
+        cout << "--- Solving with Hill Climbing ---" << endl;
+
+        while (true) {
+            cout << iteration << ":" << currentState.toString() << " " << currentState.getHeuristicCost() << endl;
+
+            if (currentState.getHeuristicCost() == 0) {
+                cout << "Solved" << endl;
+                return;
+            }
+
+            QueenBoard nextState = findBestNeighbor(currentState);
+
+            // إذا كان الجار ليس أفضل، فهذا يعني أننا وصلنا إلى قمة (حل محلي أو عالمي)
+            if (nextState.getHeuristicCost() >= currentState.getHeuristicCost()) {
+                cout << "Stuck in local optimum." << endl;
+                return;
+            }
+
+            currentState = nextState;
+            iteration++;
+        }
+    }
+};
+
+// فئة خوارزمية التلدين المحاكى
+class SimulatedAnnealing : public SearchAlgorithm {
+public:
+    SimulatedAnnealing(mt19937& generator) : SearchAlgorithm(generator) {}
+
+    void solve(const QueenBoard& initialBoard) override {
+        QueenBoard currentState = initialBoard;
+        double temperature = 100.0;
+        double annealRate = 0.95;
+        int iteration = 0;
+
+        uniform_int_distribution<> distrib(0, BOARD_SIZE - 1);
+        uniform_real_distribution<> prob_distrib(0.0, 1.0);
+
+        cout << "\n--- Solving with Simulated Annealing ---" << endl;
+
+        while (temperature > 0.0001) {
+            cout << iteration << ":" << currentState.toString() << " " << currentState.getHeuristicCost()
+                 << " Temp: " << fixed << setprecision(2) << temperature << endl;
+
+            if (currentState.getHeuristicCost() == 0) {
+                cout << "Solved" << endl;
+                return;
+            }
+
+            // اختر جارًا عشوائيًا
+            int newBoard[BOARD_SIZE];
+            currentState.copyBoard(newBoard);
+
+            int randomCol = distrib(gen);
+            int randomRow = distrib(gen);
+            newBoard[randomCol] = randomRow;
+
+            QueenBoard neighbor(newBoard);
+
+            int deltaE = neighbor.getHeuristicCost() - currentState.getHeuristicCost();
+
+            // إذا كان الجار أفضل، اقبله دائمًا
+            if (deltaE < 0) {
+                currentState = neighbor;
+            } else {
+                // إذا كان أسوأ، اقبله باحتمالية تعتمد على درجة الحرارة
+                if (exp(-deltaE / temperature) > prob_distrib(gen)) {
+                    currentState = neighbor;
+                }
+            }
+
+            temperature *= annealRate; // خفّض درجة الحرارة
+            iteration++;
+        }
+        cout << "Finished. Final state: " << currentState.toString() << " Cost: " << currentState.getHeuristicCost() << endl;
+    }
+};
+
+int main() {
+    // يمكنك تغيير الرقم الأولي (seed) واللوحة الابتدائية من هنا
+    unsigned int seed = 42;
+    string boardStr = "13572063"; // إحدى حالات الاختبار
+
+    // إعداد مولد الأرقام العشوائية
+    mt19937 gen(seed);
+
+    // تحويل السلسلة النصية إلى مصفوفة من الأعداد الصحيحة
+    int initialBoard[BOARD_SIZE];
+    for (int i = 0; i < BOARD_SIZE; ++i) {
+        initialBoard[i] = boardStr[i] - '0'; // تحويل الحرف إلى رقم
+    }
+
+    // إنشاء كائن الرقعة الأولية
+    QueenBoard startBoard(initialBoard);
+
+    // 1. حل باستخدام تسلق الهضاب
+    HillClimbing hcSolver(gen);
+    hcSolver.solve(startBoard);
+
+    // 2. حل باستخدام التلدين المحاكى
+    // إعادة تهيئة مولد الأرقام العشوائية لضمان نفس التسلسل في كلتا الخوارزميتين
+    gen.seed(seed);
+    SimulatedAnnealing saSolver(gen);
+    saSolver.solve(startBoard);
+
+    return 0;
+}
